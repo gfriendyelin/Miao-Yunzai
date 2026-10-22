@@ -1,3 +1,4 @@
+
 name: Sync Upstream
 
 on:
@@ -16,9 +17,10 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0
@@ -29,7 +31,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Sync Miao-Yunzai and independent genshin plugin
+      - name: Sync upstream and independent genshin plugin
         shell: bash
         env:
           UPSTREAM_URL: https://github.com/yoimiya-kokomi/Miao-Yunzai.git
@@ -42,88 +44,135 @@ jobs:
           STATE_DIR="$RUNNER_TEMP/sync-state"
           mkdir -p "$STATE_DIR"
 
-          echo "==> Save the previous plugin marker"
-          OLD_COMMIT=""
-          if git cat-file -e "HEAD:$MARKER" 2>/dev/null; then
-            OLD_COMMIT="$(git show "HEAD:$MARKER" | tr -d '[:space:]')"
-          fi
+          INITIAL_HEAD="$(git rev-parse HEAD)"
 
-          # Treat an invalid/missing marker as unknown so the plugin will be refreshed.
-          if [[ ! "$OLD_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            OLD_COMMIT=""
-          fi
-
-          echo "==> Back up the current independent plugin and workflow files"
-          if [ -d plugins/genshin ]; then
-            cp -a plugins/genshin "$STATE_DIR/genshin-old"
-          fi
+          echo "==> Back up workflows and independent plugin"
 
           if [ -d .github/workflows ]; then
             cp -a .github/workflows "$STATE_DIR/workflows"
           fi
 
-          echo "==> Fetch the Miao-Yunzai upstream"
+          if [ -d plugins/genshin ]; then
+            cp -a plugins/genshin "$STATE_DIR/genshin"
+          fi
+
+          OLD_PLUGIN_COMMIT=""
+          if git cat-file -e "HEAD:$MARKER" 2>/dev/null; then
+            OLD_PLUGIN_COMMIT="$(git show "HEAD:$MARKER" | tr -d '[:space:]')"
+          fi
+
+          if [[ ! "$OLD_PLUGIN_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            OLD_PLUGIN_COMMIT=""
+          fi
+
+          echo "==> Fetch Miao-Yunzai upstream"
+
           git remote remove upstream 2>/dev/null || true
           git remote add upstream "$UPSTREAM_URL"
           git fetch upstream --prune
+
           UPSTREAM_HEAD="$(git rev-parse "refs/remotes/upstream/$TARGET_BRANCH")"
+          echo "Upstream master: $UPSTREAM_HEAD"
 
-          echo "==> Reset tracked files to the Miao-Yunzai upstream"
-          git reset --hard "$UPSTREAM_HEAD"
+          echo "==> Check changes outside plugins/genshin"
 
-          # Deliberately do not run git clean -fdx here: it can delete unrelated
-          # untracked/ignored files. The independent plugin is removed explicitly below.
-          echo "==> Restore workflow files"
+          BASE_COMMIT="$(git merge-base "$INITIAL_HEAD" "$UPSTREAM_HEAD" || true)"
+
+          MAIN_CHANGED=false
+
+          if [ -z "$BASE_COMMIT" ]; then
+            echo "No common ancestor; a full upstream sync is required."
+            MAIN_CHANGED=true
+          elif ! git diff --quiet \
+            "$BASE_COMMIT" "$UPSTREAM_HEAD" \
+            -- . \
+            ':(exclude)plugins/genshin' \
+            ':(exclude)plugins/genshin/**'; then
+
+            echo "Miao-Yunzai has relevant upstream changes."
+            MAIN_CHANGED=true
+          else
+            echo "No upstream changes outside plugins/genshin."
+          fi
+
+          if [ "$MAIN_CHANGED" = true ]; then
+            echo "==> Reset tracked files to upstream master"
+            git reset --hard "$UPSTREAM_HEAD"
+          else
+            echo "==> Keep the existing main repository version"
+          fi
+
+          echo "==> Restore personal GitHub workflows"
+
+          rm -rf .github/workflows
           mkdir -p .github/workflows
+
           if [ -d "$STATE_DIR/workflows" ]; then
             cp -a "$STATE_DIR/workflows/." .github/workflows/
           fi
 
-          echo "==> Replace the upstream genshin directory with the independent plugin"
-          mkdir -p plugins
-          rm -rf plugins/genshin
-          if [ -d "$STATE_DIR/genshin-old" ]; then
-            cp -a "$STATE_DIR/genshin-old" plugins/genshin
-          fi
+          echo "==> Check independent genshin plugin"
 
-          echo "==> Check the independent plugin's latest default-branch commit"
-          GENSIN_HEAD="$(git ls-remote "$GENSIN_URL" HEAD | awk 'NR==1 {print $1}')"
-          if [ -z "$GENSIN_HEAD" ]; then
-            echo "::error::Could not obtain the HEAD commit from $GENSIN_URL"
+          PLUGIN_HEAD="$(
+            git ls-remote "$GENSIN_URL" HEAD | awk 'NR==1 {print $1}'
+          )"
+
+          if [[ ! "$PLUGIN_HEAD" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Failed to obtain genshin default-branch HEAD."
             exit 1
           fi
 
-          if [ "$GENSIN_HEAD" != "$OLD_COMMIT" ] || [ ! -d plugins/genshin ]; then
-            echo "Plugin upstream changed, marker is missing, or plugin directory is absent; cloning latest version."
+          echo "genshin upstream HEAD: $PLUGIN_HEAD"
+
+          if [ "$PLUGIN_HEAD" != "$OLD_PLUGIN_COMMIT" ] ||
+             [ ! -d "$STATE_DIR/genshin" ]; then
+
+            echo "Plugin updated or marker missing; cloning latest version."
+
             rm -rf "$STATE_DIR/genshin-new"
             git clone --depth 1 "$GENSIN_URL" "$STATE_DIR/genshin-new"
-            NEW_COMMIT="$(git -C "$STATE_DIR/genshin-new" rev-parse HEAD)"
+
+            NEW_PLUGIN_COMMIT="$(
+              git -C "$STATE_DIR/genshin-new" rev-parse HEAD
+            )"
 
             rm -rf plugins/genshin
+            mkdir -p plugins
+
             mv "$STATE_DIR/genshin-new" plugins/genshin
             rm -rf plugins/genshin/.git
-            printf '%s\n' "$NEW_COMMIT" > "$MARKER"
-            echo "Independent plugin set to commit $NEW_COMMIT"
+
+            printf '%s\n' "$NEW_PLUGIN_COMMIT" > "$MARKER"
+
+            echo "Plugin synchronized to $NEW_PLUGIN_COMMIT"
           else
-            echo "Plugin upstream has not changed; keeping the existing plugin directory."
-            printf '%s\n' "$OLD_COMMIT" > "$MARKER"
+            echo "Plugin unchanged; restoring existing plugin."
+
+            rm -rf plugins/genshin
+            mkdir -p plugins
+
+            cp -a "$STATE_DIR/genshin" plugins/genshin
+            printf '%s\n' "$OLD_PLUGIN_COMMIT" > "$MARKER"
           fi
 
-          echo "==> Commit changes, if any"
+          echo "==> Check actual file changes"
+
           git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: sync Miao-Yunzai upstream and genshin plugin"
-          else
-            echo "No file changes to commit."
+
+          if git diff --cached --quiet; then
+            echo "No file changes; no commit or push required."
+            exit 0
           fi
 
-          echo "==> Push the synchronized result to origin/$TARGET_BRANCH"
-          LOCAL_HEAD="$(git rev-parse HEAD)"
-          REMOTE_HEAD="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk 'NR==1 {print $1}')"
+          echo "==> Commit synchronized changes"
 
-          if [ "$LOCAL_HEAD" != "$REMOTE_HEAD" ]; then
-            # This intentionally replaces the fork branch history with the sync result.
-            git push --force origin "HEAD:refs/heads/$TARGET_BRANCH"
-          else
-            echo "Remote branch already matches the local commit."
-          fi
+          git commit -m "chore: sync Miao-Yunzai upstream and genshin plugin"
+
+          echo "==> Push with remote branch protection"
+
+          git push \
+            --force-with-lease="refs/heads/$TARGET_BRANCH:$INITIAL_HEAD" \
+            origin \
+            "HEAD:refs/heads/$TARGET_BRANCH"
+
+          echo "==> Sync completed successfully"
