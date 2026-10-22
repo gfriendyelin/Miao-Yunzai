@@ -1,4 +1,3 @@
-
 import plugin from "../../lib/plugins/plugin.js"
 import { createRequire } from "module"
 import fetch from "node-fetch"
