@@ -1,0 +1,446 @@
+import _ from 'lodash'
+import moment from 'moment'
+import base from './base.js'
+import MysApi from './mys/mysApi.js'
+import MysInfo from './mys/mysInfo.js'
+
+export default class srChallenge extends base {
+  constructor (e) {
+    super(e)
+    this.e.isSr = true
+    this.model = 'roleIndex'
+
+    this.Button = segment.button([
+      { text: '#ck帮助', callback: '#ck帮助' },
+      { text: '*sk帮助', callback: '*sk帮助' }
+    ],[
+      { text: '*扫码登录', callback: '*扫码登录' },
+      { text: '*刷新ck', callback: '*刷新ck' }
+    ])
+  }
+
+  static async getIndex (e) {
+    let challenge = new srChallenge()
+
+    let uid = await challenge.userUid(e)
+    let ck = await challenge.userCk(e, uid)
+    let game = e.game
+    let api = new MysApi(uid, ck, {}, '', '', game)
+
+    let device_fp = await api.getData('getFp')
+    if (device_fp?.retcode !== 0) return false
+    let headers = { 'x-rpc-device_fp': device_fp?.data?.device_fp }
+
+    let resIndex = await api.getData('index')
+    resIndex = await new MysInfo(e).checkCode(resIndex, 'index', api, { headers }, true)
+    if (resIndex?.retcode !== 0) return false
+
+    let resBrief = await api.getData('brief')
+    resBrief = await new MysInfo(e).checkCode(resBrief, 'brief', api, { headers }, true)
+    if (resBrief?.retcode !== 0) return false
+
+    /** 截图数据 */
+    return {
+      ...challenge.detailData({ ...resIndex, ...resBrief.data }),
+      uid: uid,
+      saveId: uid,
+      quality: 80
+    }
+  }
+
+  detailData (res) {
+    let { data, list } = res
+
+    let avatars = data.avatar_list || []
+
+    for (let avatar of avatars) {
+      let rarity = avatar.rarity
+      let liveNum = avatar.rank
+      let level = avatar.level
+      let id = avatar.id - 1000
+
+      if (rarity >= 5) rarity = 5
+
+      avatar.sortLevel = level
+      // id倒序，最新出的角色拍前面
+      avatar.sort = rarity * 100000 + liveNum * 10000 + level * 100 + id
+      for (let type of ['role', 'weapon']) {
+        if (type == 'weapon' && !avatar.equip) continue
+        avatar[`${type}Img`] = type == 'role' ? avatar.icon : avatar.equip.icon
+      }
+      if (avatar.equip)
+        avatar.equip.name = this.equip[avatar.equip.name] || avatar.equip.name
+    }
+
+    if (avatars.length > 0) {
+      // 重新排序
+      avatars = _.chain(avatars).orderBy(['sortLevel'], ['desc'])
+      avatars = avatars.orderBy(['sort'], ['desc']).value()
+    }
+
+    let stats = data.stats || {}
+
+    let line = [
+      [
+        { lable: '角色数', num: stats.avatar_num, extra: this.lable.avatar },
+        { lable: '成就', num: stats.achievement_num, extra: this.lable.achievement },
+        { lable: '战利品', num: stats.chest_num, extra: this.lable.chest },
+        { lable: '梦境贴纸', num: stats.dream_paster_num, extra: this.lable.dream_paster }
+      ]
+    ]
+
+    let challengeType = {
+      Chasm: '忘却之庭',
+      Story: '虚构叙事',
+      Boss: '末日幻影'
+    }
+
+    let schedule = [
+      [
+        { lable: challengeType[list[0].challenge_type], num: list[0].cur_schedule.finish_star_count, extra: list[0].cur_schedule.total_star_count },
+        { lable: challengeType[list[1].challenge_type], num: list[1].cur_schedule.finish_star_count, extra: list[1].cur_schedule.total_star_count },
+        { lable: challengeType[list[2].challenge_type], num: list[2].cur_schedule.finish_star_count, extra: list[2].cur_schedule.total_star_count }
+      ]
+    ]
+
+    return {
+      ...this.screenNote,
+      avatars,
+      line,
+      schedule,
+      activeDay: this.dayCount(stats.active_days)
+    }
+  }
+
+  dayCount (num) {
+    let daysDifference = Math.floor((new Date() - new Date('2023-04-25')) / (1000 * 60 * 60 * 24))
+    let msg = '活跃天数：' + Math.floor(num) + `/${daysDifference}天`
+    return msg
+  }
+
+  static async get (e, challengeType, all) {
+    let challenge = new srChallenge()
+    return await challenge.allData(e, challengeType, all)
+  }
+
+  async queryChallenge (e, challengeType, all, uid, ck, device_fp) {
+    const simple = e.msg.match('简易')
+    const recent = e.msg.match('往期')
+    const last = e.msg.match('上期')
+
+    if (all !== true) {
+      uid = await this.userUid(e)
+      ck = await this.userCk(e, uid)
+    }
+
+    let scheduleType = '1'
+    if (last) {
+      scheduleType = '2'
+    }
+    if ((recent || last) && challengeType == 3) {
+      scheduleType = '3'
+    }
+
+    let game = e.game
+    let api = new MysApi(uid, ck, {}, '', '', game)
+    if (all !== true) {
+      device_fp = await api.getData('getFp')
+      if (device_fp?.retcode !== 0) return false
+    }
+    let headers = { 'x-rpc-device_fp': device_fp?.data?.device_fp }
+
+    let challengeData, res, simpleRes
+    // 先查详细的
+    if (!simple) {
+      let requestType = [
+        'srChallengeBoss',
+        'srChallengeStory',
+        'srChallenge',
+        'srChallengePeak'
+      ][challengeType]
+      res = await api.getData(requestType, { headers, schedule_type: scheduleType })
+      res = await new MysInfo(e).checkCode(res, requestType, api, { headers, schedule_type: scheduleType }, true)
+    }
+    if (simple || res.retcode !== 0) {
+      // 详细的出验证码了，查简单的
+      let simpleRequestType = [
+        'srChallengeBossSimple',
+        'srChallengeStorySimple',
+        'srChallengeSimple',
+        'srChallengePeakSimple'
+      ][challengeType]
+      simpleRes = await api.getData(simpleRequestType, { headers, schedule_type: scheduleType })
+      simpleRes = await new MysInfo(e).checkCode(simpleRes, simpleRequestType, api, { headers, schedule_type: scheduleType }, true)
+      // 连简单的也出验证码，打住
+      if (simpleRes.retcode !== 0) return false
+    }
+    if (!simple && res.retcode === 0) {
+      challengeData = res
+    } else if (simple && simpleRes.retcode === 0) {
+      challengeData = simpleRes
+    } else {
+      challengeData = simpleRes
+      let queryName = [
+        '末日幻影',
+        '虚构叙事',
+        '忘却之庭',
+        '异相仲裁'
+      ][challengeType]
+      logger.warn(`星铁${queryName}详细信息出现验证码，仅显示最后一层信息`)
+    }
+    const data = { ...challengeData.data }
+
+    // 根据 scheduleType 选择对应的 group（末日幻影/虚构叙事的 groups 包含本期和上期）
+    if (data.groups && data.groups.length > 1) {
+      const activeGroup = scheduleType === '1'
+        ? data.groups.find(g => g.status === 'New')
+        : data.groups.find(g => g.status === 'End')
+      if (activeGroup) {
+        data.groups = [activeGroup]
+      }
+    }
+
+    if (recent && challengeType == 3) return {
+      data,
+      uid,
+      challengeType,
+      type: scheduleType
+    }
+    // 最新更新的深渊
+    data.currentType = this.getCurrentChallengeType()
+    // 起止日期要分开处理
+    if ([0, 1].includes(challengeType)) {
+      // 末日幻影、虚构叙事
+      data.beginTime = this.timeFormat(data.groups[0].begin_time)
+      data.endTime = this.timeFormat(data.groups[0].end_time)
+    } else if (challengeType == 2) {
+      // 忘却之庭
+      data.beginTime = this.timeFormat(data.begin_time)
+      data.endTime = this.timeFormat(data.end_time)
+    } else {
+      // 异相仲裁
+      data.peak_records = last ? data.challenge_peak_records[1] : data.challenge_peak_records[0]
+      data.beginTime = this.timeFormat(data.peak_records.group.begin_time)
+      data.endTime = this.timeFormat(data.peak_records.group.end_time)
+    }
+    if (challengeType != 3) {
+      data.all_floor_detail = _.map(data.all_floor_detail, (floor) => {
+        return {
+          ...floor,
+          node_1: {
+            ...floor.node_1,
+            ...(floor.node_1.challenge_time && {
+              challengeTime: this.timeFormat(floor.node_1.challenge_time, 'YYYY.MM.DD HH:mm')
+            }) // 快速通关就没有 challenge_time 这个属性
+          },
+          ...(floor.node_2 && {
+            node_2: {
+              ...floor.node_2,
+              ...(floor.node_2.challenge_time && {
+                challengeTime: this.timeFormat(floor.node_2.challenge_time, 'YYYY.MM.DD HH:mm')
+              })
+            }
+          }),
+          ...(floor.node_3 && {
+            node_3: {
+              ...floor.node_3,
+              ...(floor.node_3.challenge_time && {
+                challengeTime: this.timeFormat(floor.node_3.challenge_time, 'YYYY.MM.DD HH:mm')
+              })
+            }
+          })
+        }
+      })
+    } else {
+      // 异相仲裁
+      // 王棋
+      if (data.peak_records.boss_record) {
+        data.peak_records.boss_record.challengeTime =
+          this.timeFormat(data.peak_records.boss_record.challenge_time, 'YYYY.MM.DD HH:mm')
+      }
+
+      // 骑士
+      data.peak_records.mob_records = 
+        _.map(data.peak_records.mob_records, (record) => {
+          return {
+            ...record,
+            ...(record.challenge_time && {
+              challengeTime: this.timeFormat(record.challenge_time, 'YYYY.MM.DD HH:mm')
+            })
+          }
+        })
+    }
+    // 末日幻影、虚构叙事：计算两边节点的总分
+    if ([0, 1].includes(challengeType)) {
+      data.all_floor_detail = _.map(data.all_floor_detail, (floor) => {
+        if (floor.node_1.score != null) {
+          let totalScore = parseInt(floor.node_1.score)
+          if (floor.node_2 && floor.node_2.score != null) {
+            totalScore += parseInt(floor.node_2.score)
+          }
+          if (floor.node_3 && floor.is_tierce) {
+            totalScore += parseInt(floor.node_3.score)
+          }
+          return {
+            ...floor,
+            score: totalScore.toString()
+          }
+        } else {
+          return floor
+        }
+      })
+    }
+
+    return {
+      data,
+      uid,
+      challengeType,
+      type: scheduleType
+    }
+  }
+
+  recentPeak (data) {
+    // 异相仲裁
+    data.beginTime = this.timeFormat(data.group.begin_time)
+    data.endTime = this.timeFormat(data.group.end_time)
+    // 王棋
+    if (data.boss_record) {
+      data.boss_record.challengeTime =
+        this.timeFormat(data.boss_record.challenge_time, 'YYYY.MM.DD HH:mm')
+    }
+
+    // 骑士
+    data.mob_records = 
+      _.map(data.mob_records, (record) => {
+        return {
+          ...record,
+          ...(record.challenge_time && {
+            challengeTime: this.timeFormat(record.challenge_time, 'YYYY.MM.DD HH:mm')
+          })
+        }
+      })
+
+    return { ...data }
+  }
+
+  timeFormat (timeObj, format = 'YYYY.MM.DD') {
+    const { year, month, day, hour, minute } = timeObj
+    return moment({
+      year,
+      month: month - 1,
+      day,
+      hour,
+      minute
+    }).format(format)
+  }
+
+  getCurrentChallengeType () {
+    // 获取当前时间
+    let currentTime = new Date()
+
+    // 获取第一期混沌回忆的时间
+    let firstTime = new Date('2024-06-24T04:00:00')
+
+    // 计算时间差距（以毫秒为单位）
+    if (currentTime < firstTime) {
+      logger.error('当前系统时间早于第一期末日幻影时间，请检查系统配置！')
+    }
+    let timeDiff = currentTime - firstTime
+    // 2026 年 8-10 月三个深渊各有一期缩短为 5 周（末日 08.31-10.05、虚构 09.14-10.19、忘却 09.28-11.02），
+    // 自 2026-10-05 末日提前更新起，轮换整体比 14 天网格早 7 天，之后恢复 6 周循环
+    if (currentTime >= new Date('2026-10-05T04:00:00')) {
+      timeDiff += 7 * 24 * 60 * 60 * 1000
+    }
+    // 2周（14天）为一个周期
+    let periodNum = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 14))
+    // 0: 末日
+    // 1: 虚构
+    // 2: 混沌
+    return periodNum % 3
+  }
+
+  async userUid (e) {
+    let uid = e.msg.match(/\d+/)?.[0] || await MysInfo.getUid(e, false)
+    if (!uid) {
+      await e.reply(['找不到uid，请：*刷新ck 或者：*扫码登录', this.Button])
+      return false
+    }
+
+    return uid
+  }
+
+  async userCk (e, uid) {
+    let game = e.game
+    let ck = await MysInfo.checkUidBing(uid, game)
+    ck = ck.ck
+    if (!ck) {
+      await e.reply([`uid:${uid}当前尚未绑定Cookie`, this.Button])
+      return false
+    }
+
+    return ck
+  }
+
+  async allData (e, challengeType, all) {
+    let screenData = this.screenData
+    let data
+    if (all !== true) {
+      data = await this.queryChallenge(e, challengeType)
+
+      if (e.msg.match('往期') && challengeType == 3) {
+        screenData.tplFile = `${this._path}/plugins/genshin/resources/StarRail/html/challenge/peak_recent.html`
+      } else if (challengeType == 3) {
+        screenData.tplFile = `${this._path}/plugins/genshin/resources/StarRail/html/challenge/index_peak.html`
+      } else {
+        screenData.tplFile = `${this._path}/plugins/genshin/resources/StarRail/html/challenge/index.html`
+      }
+      if (e.msg.match('往期') && challengeType == 3) {
+        let present = this.recentPeak(data.data.challenge_peak_records[0])
+        let last = this.recentPeak(data.data.challenge_peak_records[1])
+        let early = this.recentPeak(data.data.challenge_peak_records[2])
+
+        data = {
+          ...data,
+          ...screenData,
+          saveId: data.uid,
+          quality: 80,
+          present,
+          last,
+          early
+        }
+      } else {
+        data = {
+          ...data,
+          ...screenData,
+          saveId: data.uid,
+          quality: 80
+        }
+      }
+    } else {
+      let uid = await this.userUid(e)
+      let ck = await this.userCk(e, uid)
+      let game = e.game
+      let api = new MysApi(uid, ck, {}, '', '', game)
+      let device_fp = await api.getData('getFp')
+      if (device_fp?.retcode !== 0) return false
+      let hall = await this.queryChallenge(e, 2, true, uid, ck, device_fp)
+      if (!hall) return false
+      let story = await this.queryChallenge(e, 1, true, uid, ck, device_fp)
+      if (!story) return false
+      let boss = await this.queryChallenge(e, 0, true, uid, ck, device_fp)
+      if (!boss) return false
+
+      screenData.tplFile = `${this._path}/plugins/genshin/resources/StarRail/html/challenge/index_all.html`
+      data = {
+        ...screenData,
+        saveId: uid,
+        quality: 80,
+        hall,
+        story,
+        boss
+      }
+    }
+
+    return data
+  }
+}

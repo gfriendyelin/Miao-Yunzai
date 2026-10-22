@@ -1,12 +1,15 @@
-import MysApi from "./mysApi.js"
-import GsCfg from "../gsCfg.js"
-import lodash from "lodash"
-import NoteUser from "./NoteUser.js"
-import MysUser from "./MysUser.js"
-import DailyCache from "./DailyCache.js"
+import MysApi from './mysApi.js'
+import GsCfg from '../gsCfg.js'
+import lodash from 'lodash'
+import NoteUser from './NoteUser.js'
+import MysUser from './MysUser.js'
+import DailyCache from './DailyCache.js'
+import getDeviceFp from '../getDeviceFp.js'
+import Cfg from '../Cfg.js'
+import common from '../../../../lib/common/common.js'
 
 export default class MysInfo {
-  static tips = "请先#绑定Cookie\n发送【Cookie帮助】查看配置教程"
+  static tips = '请先#绑定Cookie\n发送【Cookie帮助】查看配置教程'
 
   constructor(e) {
     if (e) {
@@ -14,43 +17,39 @@ export default class MysInfo {
       this.userId = String(e.user_id)
     }
     /** 当前查询原神uid */
-    this.uid = ""
+    this.uid = ''
     /** 当前ck信息 */
     this.ckInfo = {
-      ck: "",
-      uid: "",
-      qq: "",
-      ltuid: "",
-      type: "",
+      ck: '',
+      uid: '',
+      qq: '',
+      ltuid: '',
+      type: ''
     }
     // ck对应MysUser对象
     this.ckUser = null
     this.auth = [
-      "dailyNote",
-      "bbs_sign_info",
-      "bbs_sign_home",
-      "bbs_sign",
-      "ys_ledger",
-      "compute",
-      "avatarSkill",
-      "detail",
-      "blueprint",
-      "UserGame",
-      "deckList",
-      "avatar_cardList",
-      "action_cardList",
-      "avatarInfo",
-      "role_combat",
-      "hard_challenge",
-      "hard_challenge_popularity",
-      "characterDetail",
+      'dailyNote',
+      'ys_ledger',
+      'compute',
+      'avatarSkill',
+      'detail',
+      'blueprint',
+      'UserGame',
+      'deckList',
+      'avatar_cardList',
+      'action_cardList',
+      'avatarInfo',
+      'role_combat',
+      'characterDetail',
+      'hard_challenge',
+      'hard_challenge_popularity'
     ]
 
     this.gtest = false
-    this.mysButton = segment.button([{ text: "米游社", link: "https://miyoushe.com" }])
   }
 
-  static async init(e, api) {
+  static async init (e, api) {
     await MysInfo.initCache()
 
     let mysInfo = new MysInfo(e)
@@ -72,8 +71,8 @@ export default class MysInfo {
       return false
     }
 
-    if (!/^(1[0-9]|[6-9])[0-9]{8}/i.test(mysInfo.uid) && api === "useCdk") {
-      e.reply("兑换码使用只支持国际服uid")
+    if (!/^(1[0-9]|[6-9])[0-9]{8}/i.test(mysInfo.uid) && api === 'useCdk') {
+      e.reply('兑换码使用只支持国际服uid')
       return false
     }
 
@@ -93,15 +92,16 @@ export default class MysInfo {
    * @param matchMsgUid 用于判断消息是否为uid数据
    * @returns {Promise<string|boolean|*|string>}
    */
-  static async getUid(e, matchMsgUid = true) {
+  static async getUid (e, matchMsgUid = true) {
     let user = await NoteUser.create(e)
-    const game = e?.game || (e?.isSr ? "sr" : "gs")
+    const game = e?.game || (e?.isSr ? 'sr' : 'gs')
+    let gametype = game == 'gs' ? '#' : game == 'sr' ? '*' : game == 'zzz' ? '%' : game == 'wd' ? '&' : game == 'bh3' ? '!' : '￥'
     if (e.uid && matchMsgUid) {
       /** 没有绑定的自动绑定 */
       return user.autoRegUid(e.uid, game)
     }
 
-    let { msg = "", at = "" } = e
+    let { msg = '', at = '' } = e
     if (!msg) return false
 
     let uid
@@ -111,17 +111,26 @@ export default class MysInfo {
       uid = atUser.getUid(game)
       if (uid) return String(uid)
       if (e.noTips !== true) {
-        e.reply(["尚未绑定uid", segment.button([{ text: "绑定UID", input: "#绑定uid" }])], false, {
-          at,
-        })
+        e.reply([`请先${gametype}绑定uid`, segment.button([
+          { text: `${gametype}绑定uid`, callback: `${gametype}绑定uid` }
+        ])], false, { at })
       }
       return false
     }
 
-    let matchUid = (msg = "") => {
-      let ret = (
-        game == "zzz" ? /(1[0-9]|[1-9])[0-9]{8}|[1-9][0-9]{7}/g : /(18|[1-9])[0-9]{8}/g
-      ).exec(msg)
+    let matchUid = (msg = '') => {
+      let ret
+      if (game == 'bh2') {
+        ret = /[1-9][0-9]{5,7}/g.exec(msg)
+      } else if (game == 'bh3') {
+        ret = /[1-9][0-9]{7,9}/g.exec(msg)
+      } else if (game == 'wd') {
+        ret = /[1-9][0-9]{7,8}/g.exec(msg)
+      } else if (game == 'zzz') {
+        ret = /(1[0-9]|[1-9])[0-9]{8}|[1-9][0-9]{7}/g.exec(msg)
+      } else {
+        ret = /(18|[1-9])[0-9]{8}/g.exec(msg)
+      }
       if (!ret) return false
       return ret[0]
     }
@@ -135,9 +144,9 @@ export default class MysInfo {
     }
 
     if (e.noTips !== true) {
-      e.reply(["请先#绑定uid", segment.button([{ text: "绑定UID", input: "#绑定uid" }])], false, {
-        at: at || true,
-      })
+      e.reply([`请先${gametype}绑定uid`, segment.button([
+        { text: `${gametype}绑定uid`, callback: `${gametype}绑定uid` }
+      ])], false, { at: at || true })
     }
 
     return false
@@ -148,28 +157,20 @@ export default class MysInfo {
    * @param e
    * @returns {Promise<boolean|*>}
    */
-  static async getSelfUid(e) {
-    let { msg = "", at = "" } = e
+  static async getSelfUid (e) {
+    let { msg = '', at = '' } = e
     if (!msg) return false
 
     let user = await NoteUser.create(e)
     let selfUser = at ? await NoteUser.create(at) : user
-    const game = e?.game || (e?.isSr ? "sr" : "gs")
 
     if (!selfUser.hasCk) {
       if (e.noTips !== true) {
-        e.reply(
-          ["尚未绑定Cookie", segment.button([{ text: "Cookie帮助", callback: "#Cookie帮助" }])],
-          false,
-          { at: selfUser.qq },
-        )
+        e.reply(['尚未绑定Cookie', segment.button([
+          { text: '#Cookie帮助', callback: '#Cookie帮助' }
+        ])], false, { at: selfUser.qq })
       }
       return false
-    }
-
-    let uid = e?.mysSelfUid ? String(e.uid || "") : ""
-    if (uid && selfUser.getUidData(uid, game)?.type === "ck") {
-      return uid
     }
 
     return selfUser.getUid(e)
@@ -193,7 +194,7 @@ export default class MysInfo {
    * @param option 配置
    * @param option.log 是否显示请求日志
    */
-  static async get(e, api, data = {}, option = {}) {
+  static async get (e, api, data = {}, option = {}) {
     let mysInfo = await MysInfo.init(e, api)
 
     if (!mysInfo.uid || !mysInfo.ckInfo.ck) return false
@@ -201,13 +202,13 @@ export default class MysInfo {
 
     let user = e.user?.getMysUser()
     option.device = user.device
-    option.game = e?.game || (e?.isSr ? "sr" : "gs")
+    option.game = e?.game || (e?.isSr ? 'sr' : 'gs')
     let mysApi = new MysApi(mysInfo.uid, mysInfo.ckInfo.ck, option)
 
     let res
     if (lodash.isObject(api)) {
       let all = []
-      await mysApi.getData("getFp")
+      await mysApi.getData('getFp')
       /** 同步请求 */
       if (e.apiSync) {
         res = []
@@ -241,14 +242,14 @@ export default class MysInfo {
    * 初始化公共CK
    * @returns {Promise<void>}
    */
-  static async initPubCk() {
+  static async initPubCk () {
     // 初始化公共CK
     let pubCount = 0
-    let pubCks = GsCfg.getConfig("mys", "pubCk") || []
+    let pubCks = GsCfg.getConfig('mys', 'pubCk') || []
     for (let ck of pubCks) {
       let pubUser = await MysUser.create(ck)
       if (pubUser) {
-        let ret = await pubUser.initCache({ qq: "pub" })
+        let ret = await pubUser.initCache({ qq: 'pub' })
         if (ret) {
           pubCount++
         }
@@ -265,10 +266,10 @@ export default class MysInfo {
    * 默认会将用户CK加入查询池
    * @returns {Promise<void>}
    */
-  static async initUserCk() {
+  static async initUserCk () {
     // 初始化用户缓存
     let userCount = 0
-    await MysUser.forEach(async mys => {
+    await MysUser.forEach(async (mys) => {
       let ret = await mys.initCache()
       if (ret) {
         userCount++
@@ -283,32 +284,34 @@ export default class MysInfo {
    * @param clearData 强制初始化时是否清除已有数据 (刷新/重置)
    * @returns {Promise<boolean>}
    */
-  static async initCache(force = false, clearData = false) {
+  static async initCache (force = false, clearData = false) {
     // 检查缓存标记
     const cache = DailyCache.create()
-    if ((!force && (await cache.get("cache-ready"))) || this.initing) return true
+    if (!force && await cache.get('cache-ready') || this.initing)
+      return true
     this.initing = true
     await DailyCache.clearOutdatedData()
 
-    if (clearData) await MysUser.clearCache()
+    if (clearData)
+      await MysUser.clearCache()
 
     // 先初始化用户CK，减少一些公共CK中ltuid无法识别的情况
     await MysInfo.initUserCk()
     // 初始化公共ck
     await MysInfo.initPubCk()
 
-    await cache.set("cache-ready", new Date() * 1)
+    await cache.set('cache-ready', new Date() * 1)
     delete this.initing
     return true
   }
 
-  static async getBingCkUid() {
+  static async getBingCkUid () {
     let res = await GsCfg.getBingCk()
     return { ...res.ck }
   }
 
   // 获取uid绑定的ck信息
-  static async checkUidBing(uid, game = "gs") {
+  static async checkUidBing (uid, game = 'gs') {
     let ckUser = await MysUser.getByQueryUid(uid, game, true)
     if (ckUser && ckUser.ck) {
       return ckUser
@@ -316,13 +319,13 @@ export default class MysInfo {
     return false
   }
 
-  static async delDisable() {
+  static async delDisable () {
     return await MysUser.delDisable()
   }
 
   /** 判断绑定ck才能查询 */
-  checkAuth(api) {
-    if (api === "cookie") {
+  checkAuth (api) {
+    if (api === 'cookie') {
       return true
     }
     if (lodash.isObject(api)) {
@@ -337,22 +340,22 @@ export default class MysInfo {
     return false
   }
 
-  async checkReply() {
+  async checkReply () {
     if (this.e.noTips === true) return
 
+    const game = this.e?.game || (this.e?.isSr ? 'sr' : 'gs')
+    let gametype = game == 'gs' ? '#' : game == 'sr' ? '*' : game == 'zzz' ? '%' : game == 'wd' ? '&' : game == 'bh3' ? '!' : '￥'
+
     if (!this.uid) {
-      this.e.reply(
-        ["请先#绑定uid", segment.button([{ text: "绑定UID", input: "#绑定uid" }])],
-        false,
-        { at: true },
-      )
+      this.e.reply([`请先${gametype}绑定uid`, segment.button([
+        { text: `${gametype}绑定uid`, callback: `${gametype}绑定uid` }
+      ])], false, { at: true })
     }
 
     if (!this.ckInfo.ck) {
-      this.e.reply([
-        "暂无可用CK，请绑定更多用户或设置公共ck..",
-        segment.button([{ text: "Cookie帮助", callback: "#Cookie帮助" }]),
-      ])
+      this.e.reply(['暂无可用CK，请绑定更多用户或设置公共ck..', segment.button([
+        { text: '#Cookie帮助', callback: '#Cookie帮助' }
+      ])])
     }
 
     this.e.noTips = true
@@ -365,7 +368,7 @@ export default class MysInfo {
    * @param onlySelfCk 是否只获取uid自己对应的ck。为true则只获取uid对应ck，若无则返回为空
    * @returns {Promise<string|string|*>} 查询ck，获取失败则返回空
    */
-  async getCookie(game = "gs", onlySelfCk = false) {
+  async getCookie (game = 'gs', onlySelfCk = false) {
     if (this.ckUser?.ck) return this.ckUser?.ck
 
     let mysUser = await MysUser.getByQueryUid(this.uid, game, onlySelfCk)
@@ -378,25 +381,35 @@ export default class MysInfo {
       } else {
         // 重新分配
         await mysUser.disable(game)
-        return onlySelfCk ? "" : await this.getCookie(game)
+        return onlySelfCk ? '' : await this.getCookie(game)
       }
     }
     return this.ckUser?.ck
   }
 
-  async checkCode(res, type, mysApi = {}, data = {}, isTask = false) {
+  async checkCode (res, type, mysApi = {}, data = {}, isTask = false) {
+    let gametype = this.e.game == 'zzz' ? '%' : this.e.game == 'sr' ? '*' : '#'
+    this.mysButton = segment.button([
+      { text: '米游社', link: 'https://miyoushe.com' },
+      { text: '#ck帮助', callback: '#ck帮助' }
+    ],[
+      { text: `${gametype}扫码登录`, callback: `${gametype}扫码登录` },
+      { text: `${gametype}刷新ck`, callback: `${gametype}刷新ck` }
+    ])
+    this.hoyoButton = segment.button([
+      { text: 'HoYoLAB', link: 'https://hoyolab.com' },
+      { text: '#ck帮助', callback: '#ck帮助' }
+    ],[
+      { text: `${gametype}sk帮助`, callback: `${gametype}sk帮助` },
+      { text: `${gametype}刷新ck`, callback: `${gametype}刷新ck` }
+    ])
+    let button = /^(1[0-9]|[6-9])[0-9]{8}/i.test(this.uid) ? this.hoyoButton : this.mysButton
     if (!res) {
-      if (!isTask)
-        this.e.reply([`UID:${this.uid}，米游社接口请求失败，暂时无法查询`, this.mysButton])
+      if (!isTask) this.e.reply([`UID:${this.uid}，米游社接口请求失败，暂时无法查询`, button])
       return false
     }
 
     res.retcode = Number(res.retcode)
-    if (type === "bbs_sign") {
-      if ([-5003].includes(res.retcode)) {
-        res.retcode = 0
-      }
-    }
 
     switch (res.retcode) {
       case 0:
@@ -409,111 +422,176 @@ export default class MysInfo {
         if (/(登录|login)/i.test(res.message)) {
           if (this.ckInfo.uid) {
             logger.mark(`[ck失效][uid:${this.uid}][qq:${this.userId}]`)
-            if (!isTask)
-              this.e.reply([`UID:${this.ckInfo.uid}，米游社Cookie已失效`, this.mysButton])
+            if (!isTask) this.e.reply([`UID:${this.ckInfo.uid}，米游社Cookie已失效`, button])
           } else {
             logger.mark(`[公共ck失效][ltuid:${this.ckInfo.ltuid}]`)
-            if (!isTask)
-              this.e.reply([`UID:${this.uid}，米游社查询失败，请稍后再试`, this.mysButton])
+            if (!isTask) this.e.reply([`UID:${this.uid}，米游社查询失败，请稍后再试`, button])
           }
           if (!isTask) await this.delCk()
         } else {
-          if (!isTask)
-            this.e.reply([
-              `UID:${this.uid}，米游社接口报错，暂时无法查询：${res.message}`,
-              this.mysButton,
-            ])
+          if (!isTask) this.e.reply([`UID:${this.uid}，米游社接口报错，暂时无法查询：${res.message}`, button])
         }
         break
       case 1008:
-        if (!isTask)
-          this.e.reply([`UID:${this.uid}，请先去米游社绑定角色`, this.mysButton], false, {
-            at: this.userId,
-          })
+        if (!isTask) this.e.reply([`UID:${this.uid}，请先去米游社绑定角色`, button], false, { at: this.userId })
         break
       case 10101:
         if (!isTask) {
           await this.disableToday()
-          this.e.reply([`UID:${this.uid}，查询已达今日上限`, this.mysButton])
+          this.e.reply([`UID:${this.uid}，查询已达今日上限`, button])
         }
         break
       case 10102:
-        if (res.message === "Data is not public for the user") {
-          if (!isTask)
-            this.e.reply([`UID:${this.uid}，米游社数据未公开`, this.mysButton], false, {
-              at: this.userId,
-            })
+        if (res.message === 'Data is not public for the user') {
+          if (!isTask) this.e.reply([`UID:${this.uid}，米游社数据未公开`, button], false, { at: this.userId })
         } else {
-          if (!isTask) this.e.reply([`UID:${this.uid}，请先去米游社绑定角色`, this.mysButton])
+          if (!isTask) this.e.reply([`UID:${this.uid}，请先去米游社绑定角色`, button])
         }
         break
       // 伙伴不存在~
       case -1002:
-        if (res.api === "detail") res.retcode = 0
+        if (res.api === 'detail') res.retcode = 0
         break
       case 5003:
       case 10041:
-        if (!isTask) this.e.reply([`UID:${this.uid}，米游社账号异常，暂时无法查询`, this.mysButton])
+        if (!isTask) this.e.reply([`UID:${this.uid}，米游社账号异常，暂时无法查询，发送“${gametype}}绑定设备帮助”查看如何绑定设备`, segment.button([
+          { text: `${gametype}绑定设备帮助`, callback: `${gametype}绑定设备帮助` }
+        ])])
         break
       case 1034:
       case 10035:
-        let handler = this.e.runtime?.handler || {}
-
-        // 如果有注册的mys.req.err，调用
-        if (handler.has("mys.req.err")) {
-          logger.mark(
-            `[米游社查询][uid:${this.uid}][qq:${this.userId}] 遇到验证码，尝试调用 Handler mys.req.err`,
-          )
-          res =
-            (await handler.call("mys.req.err", this.e, {
-              mysApi,
-              type,
-              res,
-              data,
-              mysInfo: this,
-            })) || res
+        let retry = 0
+        res = await this.geetest(type, mysApi, data, res.retcode)
+        while ([1034, 10035].includes(res?.retcode) && retry < Cfg.getConfig('config').retrytime) {
+          res = await this.geetest(type, mysApi, data, res?.retcode)
+          retry++
         }
 
-        if (!res || res?.retcode == 1034) {
-          logger.mark(`[米游社查询失败][uid:${this.uid}][qq:${this.userId}] 遇到验证码`)
-          if (!isTask)
-            this.e.reply([`UID:${this.uid}，米游社查询遇到验证码，请稍后再试`, this.mysButton])
+        if (res?.retcode !== 0 && res.retcode !== 10103) {
+          let handler = this.e.runtime?.handler || {}
+
+          // 如果有注册的mys.req.err，调用
+          if (handler.has('mys.req.err')) {
+            logger.mark(`[米游社查询][uid:${this.uid}][qq:${this.userId}] 遇到验证码，尝试调用 Handler mys.req.err`)
+            res = await handler.call('mys.req.err', this.e, { mysApi, type, res, data, mysInfo: this }) || res
+          }
+          if (!res || [1034, 10035].includes(res?.retcode)) {
+            logger.mark(`[米游社查询失败][uid:${this.uid}][qq:${this.userId}] 遇到验证码`)
+            if (!isTask) this.e.reply([`UID:${this.uid}，米游社查询遇到验证码，请稍后再试`, button])
+          }
         }
         break
       case 10307:
-        if (!isTask) this.e.reply([`UID:${this.uid}，版本更新期间，数据维护中`, this.mysButton])
+        if (!isTask) this.e.reply([`UID:${this.uid}，版本更新期间，数据维护中`, button])
         break
       default:
-        if (!isTask)
-          this.e.reply([
-            `UID:${this.uid}，米游社接口报错，暂时无法查询：${res.message || "error"}`,
-            this.mysButton,
-          ])
+        if (!isTask) this.e.reply([`UID:${this.uid}，米游社接口报错，暂时无法查询：${res.message || 'error'}`, button])
         break
     }
     if (res.retcode !== 0) {
       logger.mark(`[mys接口报错]${JSON.stringify(res)}，uid：${this.uid}`)
     }
-
-    if (type === "character" && res.data?.list) res.data.avatars = res.data?.list
-
+    if (type === 'character' && res.data?.list) res.data.avatars = res.data?.list
     // 添加请求记录
     if (!isTask) await this.ckUser.addQueryUid(this.uid)
     return res
   }
 
+  async geetest(type, mysApi, data, retcode = 1034) {
+    let api = Cfg.getConfig('api')
+    let res = await mysApi.getData(type, data)
+    if (res?.retcode == 0 || (type == 'detail' && res?.retcode == -1002)) return res
+
+    if (data?.headers) delete data.headers
+    try {
+      let vali = new MysApi(mysApi.uid, mysApi.cookie, mysApi.option, '', '', 'all')
+
+      let challenge_game = mysApi.game == 'zzz' ? '8' : mysApi.game == 'sr' ? '6' : '2'
+      let { deviceFp } = await getDeviceFp.Fp(mysApi.uid, mysApi.cookie, mysApi.game)
+      let headers = { 'x-rpc-device_fp': deviceFp, 'x-rpc-challenge_game': challenge_game }
+      let app_key = mysApi.game == 'zzz' ? 'game_record_zzz' : mysApi.game == 'sr' ? 'hkrpg_game_record' : ''
+
+      res = await vali.getData(retcode == 10035 ? "createGeetest" : "createVerification", { headers, app_key })
+      if (!res) return { "data": null, "message": "ck失效", "retcode": 10103 }
+
+      let retry = 0
+      if (api.type == 0) {
+        let test_nine = res
+        res = await vali.getData("test_nine", res?.data)
+        if (res?.data?.validate) res = {
+          data: {
+            challenge: test_nine?.data?.challenge,
+            validate: res?.data?.validate
+          }
+        }
+      } else if (api.type == 1) {
+        res = await vali.getData("recognize", res?.data)
+        if (res?.resultid) {
+          let results = res
+          await common.sleep(5000)
+          res = await vali.getData("results", results)
+          while ((res?.status == 2) && retry < 10) {
+            await common.sleep(5000)
+            res = await vali.getData("results", results)
+            retry++
+          }
+        }
+      } else if (api.type == 2) {
+        res = await vali.getData("in", res?.data)
+        if (res?.request) {
+          let request = res
+          await common.sleep(5000)
+          res = await vali.getData("res", request)
+          while ((res?.request == "CAPCHA_NOT_READY") && retry < 10) {
+            await common.sleep(5000)
+            res = await vali.getData("res", request)
+            retry++
+          }
+        }
+      }
+      if (res?.data?.validate || res?.request?.geetest_validate) {
+        res = await vali.getData(retcode == 10035 ? "verifyGeetest" : "verifyVerification", {
+          ...res?.data ? res.data : res.request,
+          headers,
+          app_key
+        })
+      } else {
+        return { "data": null, "message": `${api.api}验证码失败`, "retcode": retcode }
+      }
+
+      if (res?.data?.challenge) {
+        res = await mysApi.getData(type, {
+          headers: {
+            "x-rpc-challenge": res?.data?.challenge,
+            ...headers
+          },
+          ...data
+        })
+      }
+      if (res?.retcode !== 0)
+        return { "data": null, "message": "", "retcode": retcode }
+
+    } catch (error) {
+      logger.error("无感日志：" + error)
+      return { "data": null, "message": "", "retcode": retcode }
+    }
+    return res
+  }
+
   /** 删除失效ck */
-  async delCk() {
+  async delCk () {
     if (!this.ckUser) {
       return false
     }
-    let ckUser = this.ckUser
-    // 删除记录，并清除对应user ck记录
-    await ckUser.delWithUser()
+    if (Cfg.getConfig('config').Autodelck) {
+      let ckUser = this.ckUser
+      // 删除记录，并清除对应user ck记录
+      await ckUser.delWithUser()
+    }
   }
 
   /** 查询次数满，今日内标记失效 */
-  async disableToday(game = "gs") {
+  async disableToday (game = 'gs') {
     /** 统计次数设为超限 */
     await this.ckUser.disable(game)
   }

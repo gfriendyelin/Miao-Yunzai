@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="content-type" content="text/html;charset=utf-8" />
+    <link rel="shortcut icon" href="#" />
+    <link rel="stylesheet" type="text/css" href="{{pluResPath}}html/dailyNote/dailyNote.css" />
+    <link rel="preload" href="{{fontsPath}}tttgbnumber.ttf" as="font">
+</head>
+
+<body id="container">
+    <div class="container">
+        <div class="title">
+            <div class="uid">
+                <div class="uid_item"><span class="uid_text">UID:</span><span class="uid_span">{{uid}}</span>
+                </div>
+                <div class="uid_item"><span class="uid_text">签到:</span>
+                    <div class="uid_span">
+                        <div class="uid_name">{{if is_sign}}已{{else}}尚未{{/if}}签到</div>
+                    </div>
+                </div>
+            </div>
+            <div class="title_date">
+                <div class="icon">
+                    <img src="{{miaoPath}}{{sricon}}" />
+                </div>
+                <div class="title_date_text">
+                    <div>{{nowDay}}</div>
+                    <div>{{day}}</div>
+                </div>
+            </div>
+        </div>
+        <div class="subject">
+            <div class="subject_note">开拓力：<span>{{current_stamina}}</span>&nbsp;/<span>{{max_stamina}}</span></div>
+            <div class="subject_note">后备开拓力：{{current_reserve_stamina}}</div>
+            <div class="subject_solid"><span style="width: {{bfStamina}};"></span></div>
+            <div class="subject_date">
+                {{if stamina_recover_time>0}}
+                剩余:<span style="margin-left: 25px;">{{resinMaxTime}}</span>
+                {{else}}
+                开拓力已完全恢复
+                {{/if}}
+            </div>
+        </div>
+        <div class="center">
+            <div class="center_item" , style="padding-left: 60px;">
+                每日实训：<span
+                    class="{{if current_train_score < max_train_score}}yellow{{/if}}">{{current_train_score}}</span>/{{max_train_score}}
+            </div>
+            <div class="center_item">
+                周期积分：<span
+                    class="{{if grid_fight_weekly_cur < grid_fight_weekly_max}}yellow{{/if}}">{{grid_fight_weekly_cur}}</span>/{{grid_fight_weekly_max}}
+            </div>
+        </div>
+        <div class="center">
+            <div class="center_item" , style="padding-left: 60px;">
+                历战余响：<span
+                    class="{{if weekly_cocoon_cnt > 0}}yellow{{/if}}">{{3 - weekly_cocoon_cnt}}</span>/{{weekly_cocoon_limit}}
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,173 @@
+import plugin from '../../../lib/plugins/plugin.js'
+import puppeteer from '../../../lib/puppeteer/puppeteer.js'
+import Cfg from '../model/Cfg.js'
+import srChallenge from '../model/challenge.js'
+
+export class Challenge extends plugin {
+  constructor () {
+    super({
+      name: 'genshin·星铁信息',
+      dsc: '星穹铁道角色、深渊信息',
+      event: 'message',
+      priority: Cfg.getConfig('config').priority,
+      rule: [
+        {
+          reg: '^#*星铁?(角色|查询|查询角色|角色查询|人物|卡片)',
+          fnc: 'roleIndex'
+        },
+        {
+          reg: '^#*星铁?(上期|本期)?(简易)?(深渊)',
+          fnc: 'challenge'
+        },
+        {
+          reg: '^#*星铁?(最新|当期)(简易)?(深渊)',
+          fnc: 'challengeCurrent'
+        },
+        {
+          reg: '^#*星铁?(上期|本期)?(简易)?(忘却|忘却之庭|混沌|混沌回忆)',
+          fnc: 'challengeForgottenHall'
+        },
+        {
+          reg: '^#*星铁?(上期|本期)?(简易)?(虚构|虚构叙事)',
+          fnc: 'challengeStory'
+        },
+        {
+          reg: '^#*星铁?(上期|本期)?(简易)?(末日|末日幻影)',
+          fnc: 'challengeBoss'
+        },
+        {
+          reg: '^#*星铁?(往期|上期|本期)?(简易)?(异乡|异相|异向|仲裁|异相仲裁)',
+          fnc: 'challengePeak'
+        }
+      ]
+    })
+  }
+
+  async roleIndex (e) {
+    if (/记录|统计/.test(e.msg)) return false
+    await e.reply('角色数据获取中，请稍后……')
+    let res = await srChallenge.getIndex(e)
+    if (!res) return false
+    let img = await puppeteer.screenshot(`${res.gstempFile}roleIndex`, res)
+
+    let button = this.button(true)
+    if (img) return await e.reply([img, segment.button(...button)])
+  }
+
+  async challengeForgottenHall (e) {
+    let challenge = Cfg.getConfig('config').challenge
+    if (!challenge) return false
+    await e.reply('正在获取忘却之庭数据，请稍后……')
+    let res = await srChallenge.get(e, 2)
+    if (!res) return false
+    let img = await puppeteer.screenshot(`${res.srtempFile}challenge`, res)
+
+    let button = this.button(false)
+    if (img) return await e.reply([img, segment.button(...button)])
+  }
+
+  async challengeStory (e) {
+    let challenge = Cfg.getConfig('config').challenge
+    if (!challenge) return false
+    await e.reply('正在获取虚构叙事数据，请稍后……')
+    let res = await srChallenge.get(e, 1)
+    if (!res) return false
+    let img = await puppeteer.screenshot(`${res.srtempFile}challenge`, res)
+
+    let button = this.button(false)
+    if (img) return await e.reply([img, segment.button(...button)])
+  }
+
+  async challengeBoss (e) {
+    let challenge = Cfg.getConfig('config').challenge
+    if (!challenge) return false
+    await e.reply('正在获取末日幻影数据，请稍后……')
+    let res = await srChallenge.get(e, 0)
+    if (!res) return false
+    let img = await puppeteer.screenshot(`${res.srtempFile}challenge`, res)
+
+    let button = this.button(false)
+    if (img) return await e.reply([img, segment.button(...button)])
+  }
+
+  async challengePeak (e) {
+    let challenge = Cfg.getConfig('config').challenge
+    if (!challenge) return false
+    await e.reply('正在获取异相仲裁数据，请稍后……')
+    let res = await srChallenge.get(e, 3)
+    if (!res) return false
+    let img = await puppeteer.screenshot(`${res.srtempFile}challenge`, res)
+
+    let button = this.button(false)
+    if (img) return await e.reply([img, segment.button(...button)])
+  }
+
+  async challenge (e) {
+    let challenge = Cfg.getConfig('config').challenge
+    if (!challenge) return false
+    await e.reply('正在获取全部深渊数据，请稍后……')
+    let res = await srChallenge.get(e, '', true)
+    if (!res) return false
+    let img = await puppeteer.screenshot(`${res.srtempFile}challenge`, res)
+
+    let button = this.button(false)
+    if (img) return await e.reply([img, segment.button(...button)])
+  }
+
+  async challengeCurrent (e) {
+    let challenge = Cfg.getConfig('config').challenge
+    if (!challenge) return false
+    await e.reply('正在获取最新深渊数据，请稍后……')
+    let res = await srChallenge.get(e, this.getCurrentChallengeType())
+    if (!res) return false
+    let img = await puppeteer.screenshot(`${res.srtempFile}challenge`, res)
+
+    let button = this.button(false)
+    if (img) return await e.reply([img, segment.button(...button)])
+  }
+
+  getCurrentChallengeType () {
+    // 获取当前时间
+    let currentTime = new Date()
+
+    // 获取第一期混沌回忆的时间
+    let firstTime = new Date('2024-06-24T04:00:00')
+
+    // 计算时间差距（以毫秒为单位）
+    if (currentTime < firstTime) {
+      logger.error('当前系统时间早于第一期末日幻影时间，请检查系统配置！')
+    }
+    let timeDiff = currentTime - firstTime
+    // 2周（14天）为一个周期
+    let periodNum = Math.floor(timeDiff / (1000 * 60 * 60 * 24 * 14))
+    // 0: 末日
+    // 1: 虚构
+    // 2: 混沌
+    return periodNum % 3
+  }
+
+  button (role) {
+    let button = []
+    if (role = true) {
+      button.push([
+        { text: '#练度统计', callback: '#练度统计' },
+        { text: '#圣遗物列表', callback: '#圣遗物列表' }
+      ], [
+        { text: '*练度统计', callback: '*练度统计' },
+        { text: '*遗器列表', callback: '*遗器列表' }
+      ])
+    } else {
+      button.push([
+        { text: '*忘却', callback: '*忘却' },
+        { text: '*虚构', callback: '*虚构' },
+        { text: '*末日', callback: '*末日' }
+      ], [
+        { text: '*深渊', callback: '*深渊' },
+        { text: '*异相', callback: '*异相' },
+        { text: '*往期异相', callback: '*往期异相' }
+      ])
+    }
+
+    return button
+  }
+}
