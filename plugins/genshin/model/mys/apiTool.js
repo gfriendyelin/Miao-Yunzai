@@ -35,6 +35,7 @@ export default class apiTool {
     let bbs_api_os = 'https://bbs-api-os.hoyolab.com/'
     let pass_api = 'https://passport-api.miyoushe.com/'
     let pass_api_os = 'https://passport-api-sg.hoyoverse.com/'
+    let account_api_os = 'https://api-account-os.hoyolab.com/'
     let host, hostRecord, hostPublicData
     if (/_cn/.test(this.biz) || /cn_|_cn/.test(this.server)) {
       host = 'https://api-takumi.mihoyo.com/'
@@ -79,10 +80,6 @@ export default class apiTool {
         recognize: {
           url: `${this.api.api}`,
           config: `${this.api.key}&${this.api.query}&gt=${data.gt}&challenge=${data.challenge}`
-        },
-        signrecognize: {
-          url: `${this.api.api}`,
-          config: `${this.api.key}&${this.api.signquery}&gt=${data.gt}&challenge=${data.challenge}`
         },
         results: {
           url: `${this.api.resapi}`,
@@ -274,6 +271,16 @@ export default class apiTool {
             url: 'https://public-operation-hk4e.mihoyo.com/common/apicdkey/api/webExchangeCdkey',
             query: `cdkey=${data.cdk}&game_biz=hk4e_cn&lang=zh-cn&region=${this.server}&uid=${this.uid}`
           },
+          AuthKey: {
+            url: `${host}binding/api/genAuthKey`,
+            body: {
+              auth_appid: 'webview_gacha',
+              game_biz: 'hk4e_cn',
+              game_uid: this.uid,
+              region: this.server
+            },
+            types: 'authkey'
+          },
           getFp: {
             url: `${hostPublicData}device-fp/api/getFp`,
             body: {
@@ -308,19 +315,24 @@ export default class apiTool {
             types: 'sign'
           },
           getBySToken: {
-            url: `${pass_api_os}account/ma-passport/token/getBySToken`,
+            url: `${pass_api_os}account/ma-passport/token/getBySToken?lrsag=1`,
             body: {
-              dst_token_types: [2]
+              dst_token_types: [2, 4]
             },
             types: 'getBySToken'
-          },
-          bbsGetCookie: {
-            url: `${host}auth/api/getCookieAccountInfoBySToken`,
-            query: 'game_biz=hk4e_global',
           },
           useCdk: {
             url: 'https://public-operation-hk4e.hoyolab.com/common/apicdkey/api/webExchangeCdkeyHyl',
             query: `cdkey=${data.cdk}&game_biz=hk4e_global&lang=zh-cn&region=${this.server}&t=${new Date().getTime()}&uid=${this.uid}`
+          },
+          AuthKeyByCookieToken: {
+            url: `${account_api_os}binding/api/genAuthKeyByCookieToken`,
+            body: {
+              auth_appid: 'webview_gacha',
+              game_biz: 'hk4e_global',
+              game_uid: this.uid,
+              region: this.server
+            },
           },
           getFp: {
             url: `${hostPublicData}device-fp/api/getFp`,
@@ -452,16 +464,6 @@ export default class apiTool {
             registration_id: this.generateSeed(19)
           }
         },
-        AuthKey: {
-          url: `${host}binding/api/genAuthKey`,
-          body: {
-            auth_appid: 'webview_gacha',
-            game_biz: 'hk4e_cn',
-            game_uid: this.uid,
-            region: this.server
-          },
-          types: 'authkey'
-        }
       },
       sr: {
         ...(['prod_gf_cn', 'prod_qd_cn'].includes(this.server) ? {
@@ -534,15 +536,11 @@ export default class apiTool {
             types: 'sign'
           },
           getBySToken: {
-            url: `${pass_api_os}account/ma-passport/token/getBySToken`,
+            url: `${pass_api_os}account/ma-passport/token/getBySToken?lrsag=1`,
             body: {
-              dst_token_types: [2]
+              dst_token_types: [2, 4]
             },
             types: 'getBySToken'
-          },
-          bbsGetCookie: {
-            url: `${host}auth/api/getCookieAccountInfoBySToken`,
-            query: 'game_biz=hkrpg_global',
           },
           useCdk: {
             url: 'https://public-operation-hkrpg.hoyolab.com/common/apicdkey/api/webExchangeCdkeyHyl',
@@ -737,15 +735,11 @@ export default class apiTool {
             types: 'sign'
           },
           getBySToken: {
-            url: `${pass_api_os}account/ma-passport/token/getBySToken`,
+            url: `${pass_api_os}account/ma-passport/token/getBySToken?lrsag=1`,
             body: {
-              dst_token_types: [2]
+              dst_token_types: [2, 4]
             },
             types: 'getBySToken'
-          },
-          bbsGetCookie: {
-            url: `${host}auth/api/getCookieAccountInfoBySToken`,
-            query: 'game_biz=nap_global',
           },
           useCdk: {
             url: 'https://public-operation-nap.hoyolab.com/common/apicdkey/api/webExchangeCdkeyHyl',
